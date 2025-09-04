@@ -8,9 +8,15 @@ const {
 } = require("./constants");
 const { log, logMessage, logError } = require("./utils");
 
-// Send typing action to indicate user activity
-const sendChatAction = async (context) => {
-    const { chatId, messageId, requestedBy, requestUrl, message } = context;
+// Send typing action
+const sendChatAction = async (context = {}) => {
+    const {
+        chatId,
+        messageId,
+        requestedBy = {},
+        requestUrl,
+        message,
+    } = context;
     try {
         await Bot.sendChatAction(chatId, "typing");
     } catch (error) {
@@ -22,17 +28,24 @@ const sendChatAction = async (context) => {
             chatId,
             requestUrl,
         };
-        if (error?.response?.body?.error_code === 429) {
-            logError({ ...errorObj, type: ERROR_TYPE.RATE_LIMIT });
-        } else {
-            logError({ ...errorObj, type: ERROR_TYPE.FAILED });
-        }
+        logError({
+            ...errorObj,
+            type:
+                error?.response?.body?.error_code === 429
+                    ? ERROR_TYPE.RATE_LIMIT
+                    : ERROR_TYPE.FAILED,
+        });
     }
 };
 
-// Delete specified messages from chat
-const deleteMessages = async (context) => {
-    const { chatId, messagesToDelete, requestedBy, requestUrl } = context;
+// Delete messages
+const deleteMessages = async (context = {}) => {
+    const {
+        chatId,
+        messagesToDelete = [],
+        requestedBy = {},
+        requestUrl,
+    } = context;
     messagesToDelete.forEach(async (messageId) => {
         try {
             await Bot.deleteMessage(chatId, messageId);
@@ -45,22 +58,35 @@ const deleteMessages = async (context) => {
                 chatId,
                 requestUrl,
             };
-            if (error?.response?.body?.error_code === 429) {
-                logError({ ...errorObj, type: ERROR_TYPE.RATE_LIMIT });
-            } else {
-                logError({ ...errorObj, type: ERROR_TYPE.FAILED });
-            }
+            logError({
+                ...errorObj,
+                type:
+                    error?.response?.body?.error_code === 429
+                        ? ERROR_TYPE.RATE_LIMIT
+                        : ERROR_TYPE.FAILED,
+            });
         }
     });
 };
 
-// Send a message to a chat
-const sendMessage = async (context) => {
-    const { chatId, message, parseMode = "HTML", disablePreview = false } = context;
+// Send a message
+const sendMessage = async (context = {}) => {
+    const {
+        chatId,
+        message,
+        parseMode = "HTML",
+        disablePreview = false,
+        requestedBy = {},
+    } = context;
     try {
         await Bot.sendMessage(chatId, message, {
             parse_mode: parseMode,
             disable_web_page_preview: disablePreview,
+        });
+        logMessage({
+            chatId,
+            type: LOG_TYPE.TEXT,
+            message: "Message sent ✅",
         });
     } catch (error) {
         logError({
@@ -69,25 +95,26 @@ const sendMessage = async (context) => {
             action: ACTION.SEND_MESSAGE,
             errorCode: error?.response?.body?.error_code,
             errorDescription: error?.response?.body?.description,
+            requestedBy,
         });
     }
 };
 
-// Send a video without title/hashtags + inline button
-const sendVideo = async (chatId, videoUrl) => {
+// Send video (with inline button, no caption)
+const sendVideo = async (chatId, videoUrl, requestedBy = {}) => {
     try {
         await Bot.sendVideo(chatId, videoUrl, {
-            caption: "", // No title or hashtags
+            caption: "",
             reply_markup: {
                 inline_keyboard: [
-                    [{ text: "My Boss 🥷", url: "https://t.me/mixy_ox" }]
-                ]
-            }
+                    [{ text: "My Boss 🥷", url: "https://t.me/mixy_ox" }],
+                ],
+            },
         });
         logMessage({
             chatId,
             type: LOG_TYPE.VIDEO,
-            message: "Video sent successfully ✅",
+            message: "Video sent ✅",
         });
     } catch (error) {
         logError({
@@ -96,18 +123,28 @@ const sendVideo = async (chatId, videoUrl) => {
             action: ACTION.SEND_VIDEO,
             errorCode: error?.response?.body?.error_code,
             errorDescription: error?.response?.body?.description,
+            requestedBy,
         });
     }
 };
 
-// Send a photo
-const sendPhoto = async (chatId, photoUrl, caption = "") => {
+// Send photo
+const sendPhoto = async (
+    chatId,
+    photoUrl,
+    caption = "",
+    extra = {},
+    requestedBy = {}
+) => {
     try {
-        await Bot.sendPhoto(chatId, photoUrl, { caption });
+        await Bot.sendPhoto(chatId, photoUrl, {
+            caption,
+            ...extra,
+        });
         logMessage({
             chatId,
             type: LOG_TYPE.PHOTO,
-            message: "Photo sent successfully ✅",
+            message: "Photo sent ✅",
         });
     } catch (error) {
         logError({
@@ -116,18 +153,19 @@ const sendPhoto = async (chatId, photoUrl, caption = "") => {
             action: ACTION.SEND_PHOTO,
             errorCode: error?.response?.body?.error_code,
             errorDescription: error?.response?.body?.description,
+            requestedBy,
         });
     }
 };
 
-// Send media group (album)
-const sendMediaGroup = async (chatId, media) => {
+// Send media group
+const sendMediaGroup = async (chatId, media, requestedBy = {}) => {
     try {
         await Bot.sendMediaGroup(chatId, media);
         logMessage({
             chatId,
             type: LOG_TYPE.GROUP,
-            message: "Media group sent successfully ✅",
+            message: "Media group sent ✅",
         });
     } catch (error) {
         logError({
@@ -136,6 +174,7 @@ const sendMediaGroup = async (chatId, media) => {
             action: ACTION.SEND_MEDIA_GROUP,
             errorCode: error?.response?.body?.error_code,
             errorDescription: error?.response?.body?.description,
+            requestedBy,
         });
     }
 };
