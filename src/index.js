@@ -5,14 +5,14 @@ const { Bot, connectDB, Browser } = require("./config");
 const { initQueue } = require("./queue");
 const { log } = require("./utils");
 const ContentRequest = require("./models/ContentRequest");
-const { sendMessage, sendPhoto, sendVideo } = require("./telegramActions");
+const { MESSSAGE } = require("./constants");
+const { sendMessage, sendPhoto } = require("./telegramActions");
 const { isValidInstaUrl } = require("./utils/helper");
 const { addOrUpdateUser } = require("./utils/addOrUpdateUser");
 
-// Set the server to listen on port 6060
 const PORT = process.env.PORT || 6060;
 
-// -------------------- START COMMAND --------------------
+// ✅ Start Command Handler
 Bot.onText(/^\/start/, async (msg) => {
     const chatId = msg.chat.id;
     const firstName = msg.from.first_name || "User";
@@ -34,16 +34,16 @@ Just send me any Instagram link & I'll get it for you!`;
         parse_mode: "Markdown"
     };
 
-    // Send Photo with Caption and Buttons
     await sendPhoto({
         chatId,
         photoUrl: "https://i.ibb.co/XkLZZW9s/IMG-20250905-045429.jpg",
         caption: welcomeCaption,
-        extra: buttons
+        extra: buttons,
+        requestedBy: { userName, firstName } // ✅ Fix
     });
 });
 
-// -------------------- INSTAGRAM URL HANDLER --------------------
+// ✅ Instagram Link Handler
 Bot.onText(/^https:\/\/www\.instagram\.com(.+)/, async (msg) => {
     const chatId = msg.chat.id;
     const messageId = msg.message_id;
@@ -51,18 +51,18 @@ Bot.onText(/^https:\/\/www\.instagram\.com(.+)/, async (msg) => {
     const userName = msg?.from?.username || "";
     const firstName = msg?.from?.first_name || "";
 
-    const isURL =
+    let isURL =
         msg.entities &&
         msg.entities.length > 0 &&
         msg.entities[0].type === "url";
 
     if (isURL) {
-        const requestUrl = userMessage;
-        const urlResponse = isValidInstaUrl(requestUrl);
+        let requestUrl = userMessage;
+        let urlResponse = isValidInstaUrl(requestUrl);
         log("urlResponse: ", urlResponse);
 
         if (!urlResponse.success || !urlResponse.shortCode) {
-            log("Invalid or unsupported URL");
+            log("return from here as shortCode not found");
             return;
         }
 
@@ -83,7 +83,7 @@ Bot.onText(/^https:\/\/www\.instagram\.com(.+)/, async (msg) => {
     }
 });
 
-// -------------------- SERVER SETUP --------------------
+// ✅ Server Start
 if (require.main === module) {
     app.listen(PORT, async () => {
         log(`Insta saver running at http://localhost:${PORT}`);
