@@ -6,21 +6,27 @@ const { sendRequestedData } = require("./telegramActions");
 const { scrapWithFastDl } = require("./apis");
 const Metrics = require("./models/Metrics");
 
+// Redis connection config (Upstash)
+const redisConnection = {
+    url: process.env.UPSTASH_REDIS_REST_URL,
+    token: process.env.UPSTASH_REDIS_REST_TOKEN,
+    // BullMQ ioredis client को options पास करने के लिए
+    // Upstash हमेशा TLS (SSL) use करता है
+    tls: {}
+};
+
 // Initialize BullMQ queue
 const requestQueue = new Queue("contentRequestQueue", {
-    connection: {
-        host: "localhost",
-        port: 6379,
-    },
+    connection: redisConnection,
 });
 
 // Function to clear the queue
 const clearQueue = async () => {
     try {
         log("Clearing existing jobs in the queue...");
-        await requestQueue.drain(); // Empties waiting and active jobs
-        await requestQueue.clean(0, "completed"); // Removes completed jobs
-        await requestQueue.clean(0, "failed"); // Removes failed jobs
+        await requestQueue.drain();
+        await requestQueue.clean(0, "completed");
+        await requestQueue.clean(0, "failed");
         log("Queue cleared.");
     } catch (error) {
         log("Error clearing queue:", error);
@@ -35,7 +41,6 @@ const requestWorker = new Worker(
 
         log(`Processing job: ${id}`);
 
-        // Mark the job as PROCESSING in the database
         await ContentRequest.findByIdAndUpdate(id, {
             status: REQUEST_STATUS.PROCESSING,
             updatedAt: new Date(),
@@ -65,10 +70,8 @@ const requestWorker = new Worker(
             } else {
                 await waitFor(500);
 
-                // Send requested data
                 await sendRequestedData({ ...result.data, ...job.data });
 
-                // Delete document after successful processing
                 await ContentRequest.findByIdAndDelete(id);
                 log(`Request document deleted: ${id}`);
 
@@ -89,7 +92,6 @@ const requestWorker = new Worker(
 
             const newRetryCount = retryCount + 1;
 
-
             if (newRetryCount <= 5) {
                 await ContentRequest.findByIdAndUpdate(id, {
                     $set: {
@@ -109,20 +111,14 @@ const requestWorker = new Worker(
         }
     },
     {
-        connection: {
-            host: "localhost",
-            port: 6379,
-        },
+        connection: redisConnection,
         concurrency: 5,
     }
 );
 
 // Log job events using QueueEvents
 const queueEvents = new QueueEvents("contentRequestQueue", {
-    connection: {
-        host: "localhost",
-        port: 6379,
-    },
+    connection: redisConnection,
 });
 
 queueEvents.on("completed", ({ jobId }) => {
@@ -170,8 +166,8 @@ const fetchPendingRequests = async () => {
 // Initialize the queue and MongoDB change stream
 const initQueue = async () => {
     try {
-        await clearQueue(); // Clear the queue on start
-        await fetchPendingRequests(); // Load pending requests
+        await clearQueue();
+        await fetchPendingRequests();
         log("Queue initialized with pending requests.");
 
         const changeStream = ContentRequest.watch();
@@ -192,14 +188,13 @@ const initQueue = async () => {
             }
         });
 
-        setInterval(fetchPendingRequests, 60000); // Periodic sync every 60 seconds
+        setInterval(fetchPendingRequests, 60000);
 
-        // Periodically clean completed/failed jobs
         setInterval(async () => {
-            await requestQueue.clean(3600 * 1000, "completed"); // Clean jobs older than 1 hour
-            await requestQueue.clean(3600 * 1000, "failed"); // Clean failed jobs older than 1 hour
+            await requestQueue.clean(3600 * 1000, "completed");
+            await requestQueue.clean(3600 * 1000, "failed");
             log("Cleaned up old jobs from the queue.");
-        }, 60000); // Every minute
+        }, 60000);
     } catch (error) {
         log("Error initializing queue:", error);
     }
