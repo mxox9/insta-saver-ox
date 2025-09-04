@@ -1,110 +1,113 @@
 require("dotenv").config();
-const express = require("express");
-const app = express();
-const { Bot, connectDB, Browser } = require("./config");
-const { initQueue } = require("./queue");
-const { log, domainCleaner, extractShortCode } = require("./utils");
-const ContentRequest = require("./models/ContentRequest");
-const { MESSSAGE } = require("./constants");
-const { sendMessage } = require("./telegramActions");
-const { isValidInstaUrl } = require("./utils/helper");
-const { addOrUpdateUser } = require("./utils/addOrUpdateUser");
+const { Bot } = require("./config");
+const { sendChatAction } = require("./telegramActions");
+const { saveRequestToDB, getPendingRequests } = require("./db");
+const { downloadInstagramMedia } = require("./instagram");
+const { isValidInstagramUrl } = require("./utils");
 
-// Set the server to listen on port 6060
-const PORT = process.env.PORT || 6060;
+console.log("🤖 Bot is starting...");
 
-// Listen for any kind of message. There are different kinds of messages.
-Bot.onText(/^\/start/, async (msg, match) => {
+// Bot username from env (needed for Add to Group button)
+const BOT_USERNAME = process.env.BOT_USERNAME || "YourBotUsername";
+
+// Start Command
+const START_PHOTO = "https://i.ibb.co/XkLZZW9s/IMG-20250905-045429.jpg";
+
+Bot.onText(/\/start/, async (msg) => {
     const chatId = msg.chat.id;
-    const userName = msg?.from?.username || "";
-    const firstName = msg.from.first_name;
-    let welcomeMessage = MESSSAGE.WELCOME.replace(
-        "firstName",
-        msg.from.first_name
-    );
+    const firstName = msg.from.first_name || "User";
 
-    // Send a welcome message to the chat
-    await sendMessage({
-        chatId,
-        requestedBy: { userName, firstName },
-        message: welcomeMessage,
-    });
-});
+    const welcomeText = `👋 <b>Welcome, ${firstName}!</b>\n\n` +
+        `🤖 I'm an <b>Advanced Instagram Reels, Post & Story Downloader Bot</b>.\n\n` +
+        `✨ Just send me an Instagram link, and I'll fetch your content instantly!`;
 
-Bot.onText(/^https:\/\/www\.instagram\.com(.+)/, async (msg, match) => {
-    const chatId = msg.chat.id;
-    const messageId = msg.message_id;
-    const userMessage = msg.text;
-    const userName = msg?.from?.username || "";
-    const firstName = msg?.from?.first_name || "";
-    let isURL =
-        msg.entities &&
-        msg.entities.length > 0 &&
-        msg.entities[0].type === "url";
-    // Process user message
-    if (isURL) {
-        let requestUrl = userMessage;
-        let urlResponse = isValidInstaUrl(requestUrl);
-        log("urlResponse: ", urlResponse);
-        if (!urlResponse.success || !urlResponse.shortCode) {
-            // If domain cleaner fails, exit early
-            log("return from here as shortCode not found");
-            return;
-        }
-        const newRequest = new ContentRequest({
-            chatId,
-            requestUrl,
-            shortCode: urlResponse.shortCode,
-            requestedBy: { userName, firstName },
-            messageId: messageId,
+    try {
+        await sendChatAction({ chatId });
+
+        await Bot.sendPhoto(chatId, START_PHOTO, {
+            caption: welcomeText,
+            parse_mode: "HTML",
+            reply_markup: {
+                inline_keyboard: [
+                    [
+                        {
+                            text: "➕ Add Your Group",
+                            url: `https://t.me/${BOT_USERNAME}?startgroup=true`
+                        }
+                    ],
+                    [
+                        {
+                            text: "My Owner 👨‍💻",
+                            url: "https://t.me/mixy_ox"
+                        }
+                    ]
+                ]
+            }
         });
-
-        try {
-            // Save the request to the database
-            await newRequest.save();
-
-            await addOrUpdateUser(chatId, userName, firstName);
-        } catch (error) {
-            log("Error saving content request:", error);
-        }
+    } catch (error) {
+        console.error("Error sending start message:", error);
     }
 });
 
-// Check for Master Backend configuration [OPTIONAL]
-// Check if the module is being run directly
-if (require.main === module) {
-    app.listen(PORT, async () => {
-        log(`Insta saver running at http://localhost:${PORT}`);
+// Handle Instagram URLs
+Bot.on("message", async (msg) => {
+    const chatId = msg.chat.id;
+    const text = msg.text;
 
-        try {
-            // Connect to MongoDB
-            await connectDB();
+    // Ignore commands
+    if (!text || text.startsWith("/")) return;
 
-            // Open Browser
-            await Browser.Open();
+    if (!isValidInstagramUrl(text)) {
+        return Bot.sendMessage(chatId, "⚠️ Please send a valid Instagram link.");
+    }
 
-            // Initialize the job queue
-            await initQueue();
-        } catch (error) {
-            log("Error during startup:", error);
+    try {
+        await sendChatAction({ chatId });
+
+        // Save request to DB
+        await saveRequestToDB({
+            chatId,
+            username: msg.from.username,
+            url: text
+        });
+
+        // Download Instagram media
+        const mediaUrls = await downloadInstagramMedia(text);
+
+        if (!mediaUrls || mediaUrls.length === 0) {
+            return Bot.sendMessage(chatId, "❌ Failed to fetch media. Try again later.");
         }
-    });
-} else {
-    // Export the app instance for importing
-    module.exports = app;
-}
 
-app.get("/", (req, res) => {
-    res.json({ message: "Welcome to Insta Saver Bot" });
+        // Send all media (video/photo)
+        for (const url of mediaUrls) {
+            if (url.includes(".mp4")) {
+                await Bot.sendVideo(chatId, url, {
+                    reply_markup: {
+                        inline_keyboard: [
+                            [
+                                { text: "My Boss 🥷", url: "https://t.me/mixy_ox" }
+                            ]
+                        ]
+                    }
+                });
+            } else {
+                await Bot.sendPhoto(chatId, url);
+            }
+        }
+    } catch (error) {
+        console.error("Error handling Instagram URL:", error);
+        Bot.sendMessage(chatId, "⚠️ Something went wrong. Please try again.");
+    }
 });
 
-app.get("/test", (req, res) => {
-    res.json({ message: "Bot is Online!!" });
-});
-
-// Handle shutdown gracefully
-process.on("SIGINT", async () => {
-    // Open Browser
-    await Browser.Close();
-    process.exit(0);
-});
+// Process pending requests from DB periodically
+(async function processPending() {
+    try {
+        const pending = await getPendingRequests();
+        console.log(`[${new Date().toISOString()}] Fetched ${pending.length} pending requests from DB.`);
+    } catch (err) {
+        console.error("Error fetching pending requests:", err);
+    } finally {
+        setTimeout(processPending, 60000); // Run every 60s
+    }
+})();
