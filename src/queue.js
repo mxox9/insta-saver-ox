@@ -6,19 +6,16 @@ const { sendRequestedData } = require("./telegramActions");
 const { scrapWithFastDl } = require("./apis");
 const Metrics = require("./models/Metrics");
 
-// Redis connection config (Upstash)
+// Redis connection config (Upstash - correct way)
 const redisConnection = {
-    url: process.env.UPSTASH_REDIS_REST_URL,
-    token: process.env.UPSTASH_REDIS_REST_TOKEN,
-    // BullMQ ioredis client को options पास करने के लिए
-    // Upstash हमेशा TLS (SSL) use करता है
-    tls: {}
+    connection: {
+        url: process.env.UPSTASH_REDIS_URL, // example: rediss://default:password@host.upstash.io:6379
+        tls: {} // Upstash hamesha TLS/SSL use karta hai
+    }
 };
 
 // Initialize BullMQ queue
-const requestQueue = new Queue("contentRequestQueue", {
-    connection: redisConnection,
-});
+const requestQueue = new Queue("contentRequestQueue", redisConnection);
 
 // Function to clear the queue
 const clearQueue = async () => {
@@ -33,7 +30,7 @@ const clearQueue = async () => {
     }
 };
 
-// Process the queue using a Worker
+// Worker
 const requestWorker = new Worker(
     "contentRequestQueue",
     async (job) => {
@@ -69,9 +66,7 @@ const requestWorker = new Worker(
                 log("Scraping failed");
             } else {
                 await waitFor(500);
-
                 await sendRequestedData({ ...result.data, ...job.data });
-
                 await ContentRequest.findByIdAndDelete(id);
                 log(`Request document deleted: ${id}`);
 
@@ -105,21 +100,14 @@ const requestWorker = new Worker(
                 log(`Request document deleted: ${id}`);
             }
 
-            log(
-                `Updated request ${id} for retry. Retry count: ${newRetryCount}`
-            );
+            log(`Updated request ${id} for retry. Retry count: ${newRetryCount}`);
         }
     },
-    {
-        connection: redisConnection,
-        concurrency: 5,
-    }
+    { ...redisConnection, concurrency: 5 }
 );
 
-// Log job events using QueueEvents
-const queueEvents = new QueueEvents("contentRequestQueue", {
-    connection: redisConnection,
-});
+// Queue events
+const queueEvents = new QueueEvents("contentRequestQueue", redisConnection);
 
 queueEvents.on("completed", ({ jobId }) => {
     log(`Job ${jobId} completed successfully.`);
@@ -129,7 +117,7 @@ queueEvents.on("failed", ({ jobId, failedReason }) => {
     log(`Job ${jobId} failed: ${failedReason}`);
 });
 
-// Fetch pending requests from MongoDB and add them to the queue
+// Pending requests fetcher
 const fetchPendingRequests = async () => {
     try {
         const existingJobs = await requestQueue.getJobs([
@@ -163,7 +151,7 @@ const fetchPendingRequests = async () => {
     }
 };
 
-// Initialize the queue and MongoDB change stream
+// Init Queue
 const initQueue = async () => {
     try {
         await clearQueue();
