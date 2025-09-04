@@ -22,7 +22,6 @@ const sendChatAction = async (context) => {
             chatId,
             requestUrl,
         };
-        // Handle rate limit errors separately
         if (error?.response?.body?.error_code === 429) {
             logError({ ...errorObj, type: ERROR_TYPE.RATE_LIMIT });
         } else {
@@ -46,7 +45,6 @@ const deleteMessages = async (context) => {
                 chatId,
                 requestUrl,
             };
-            // Handle rate limit errors separately
             if (error?.response?.body?.error_code === 429) {
                 logError({ ...errorObj, type: ERROR_TYPE.RATE_LIMIT });
             } else {
@@ -58,273 +56,95 @@ const deleteMessages = async (context) => {
 
 // Send a message to a chat
 const sendMessage = async (context) => {
-    const { chatId, messageId, requestedBy, requestUrl, message } = context;
+    const { chatId, message, parseMode = "HTML", disablePreview = false } = context;
     try {
-        let res = await Bot.sendMessage(chatId, message);
-        return res;
+        await Bot.sendMessage(chatId, message, {
+            parse_mode: parseMode,
+            disable_web_page_preview: disablePreview,
+        });
     } catch (error) {
-        let errorObj = {
+        logError({
+            chatId,
+            type: ERROR_TYPE.FAILED,
             action: ACTION.SEND_MESSAGE,
             errorCode: error?.response?.body?.error_code,
             errorDescription: error?.response?.body?.description,
-            requestedBy,
-            chatId,
-            requestUrl,
-        };
-        // Handle rate limit errors separately
-        if (error?.response?.body?.error_code === 429) {
-            logError({ ...errorObj, type: ERROR_TYPE.RATE_LIMIT });
-            await Bot.sendMessage(chatId, MESSSAGE.COOL_DOWN);
-        } else {
-            logError({ ...errorObj, type: ERROR_TYPE.FAILED });
-        }
+        });
     }
 };
 
-// Send a media group (array of media) to a chat
-const sendMediaGroup = async (context) => {
-    const {
-        chatId,
-        messageId,
-        requestedBy,
-        requestUrl,
-        mediaGroupUrls,
-        caption,
-    } = context;
+// Send a video without title/hashtags + inline button
+const sendVideo = async (chatId, videoUrl) => {
     try {
-        await Bot.sendMediaGroup(chatId, mediaGroupUrls, {
-            reply_to_message_id: messageId,
-            // has_spoiler: true,
-            caption: caption,
+        await Bot.sendVideo(chatId, videoUrl, {
+            caption: "", // No title or hashtags
+            reply_markup: {
+                inline_keyboard: [
+                    [{ text: "My Boss 🥷", url: "https://t.me/mixy_ox" }]
+                ]
+            }
         });
-        // Log successful group message sending
         logMessage({
-            type: LOG_TYPE.GROUP,
-            requestedBy,
             chatId,
-            requestUrl,
-        });
-    } catch (error) {
-        let errorObj = {
-            action: ACTION.SEND_MEDIA_GROUP,
-            errorCode: error?.response?.body?.error_code,
-            errorDescription: error?.response?.body?.description,
-            requestedBy,
-            chatId,
-            requestUrl,
-        };
-        // Handle rate limit errors separately
-        if (error?.response?.body?.error_code === 429) {
-            logError({ ...errorObj, type: ERROR_TYPE.RATE_LIMIT });
-            await Bot.sendMessage(chatId, MESSSAGE.COOL_DOWN);
-        } else {
-            logError({ ...errorObj, type: ERROR_TYPE.FAILED });
-        }
-    }
-};
-
-// Send a video to a chat
-const sendVideo = async (context) => {
-    const { chatId, messageId, requestedBy, requestUrl, mediaUrl, caption } =
-        context;
-    try {
-        await Bot.sendVideo(chatId, mediaUrl, {
-            reply_to_message_id: messageId,
-            // has_spoiler: true,
-            caption: caption,
-        });
-        // Log successful video sending
-        logMessage({
             type: LOG_TYPE.VIDEO,
-            requestedBy,
-            chatId,
-            requestUrl,
+            message: "Video sent successfully ✅",
         });
     } catch (error) {
-        let errorObj = {
+        logError({
+            chatId,
+            type: ERROR_TYPE.FAILED,
             action: ACTION.SEND_VIDEO,
             errorCode: error?.response?.body?.error_code,
             errorDescription: error?.response?.body?.description,
-            requestedBy,
-            chatId,
-            requestUrl,
-        };
-        // Handle different error scenarios
-        if (error?.response?.body?.error_code === 429) {
-            logError({ ...errorObj, type: ERROR_TYPE.RATE_LIMIT });
-            await Bot.sendMessage(chatId, MESSSAGE.COOL_DOWN);
-        } else if (error?.response?.body?.error_code === 400) {
-            log("error?.response?.body ", error?.response?.body);
-            // Handle specific error for video upload limits
-            await sendMessage({
-                ...context,
-                message: MESSSAGE.VIDEO_UPLOAD_LIMIT.replace(
-                    "mediaUrl",
-                    mediaUrl
-                ),
-            });
-            logMessage({
-                type: LOG_TYPE.VIDEO_URL,
-                requestedBy,
-                chatId,
-                requestUrl,
-            });
-        } else {
-            logError({ ...errorObj, type: ERROR_TYPE.FAILED });
-        }
+        });
     }
 };
 
-// Send a photo to a chat
-const sendPhoto = async (context) => {
-    const { chatId, messageId, requestedBy, requestUrl, mediaUrl, caption } =
-        context;
+// Send a photo
+const sendPhoto = async (chatId, photoUrl, caption = "") => {
     try {
-        await Bot.sendPhoto(chatId, mediaUrl, {
-            reply_to_message_id: messageId,
-            // has_spoiler: true,
-            caption: caption,
-        });
-        // Log successful photo sending
+        await Bot.sendPhoto(chatId, photoUrl, { caption });
         logMessage({
-            type: LOG_TYPE.PHOTO,
-            requestedBy,
             chatId,
-            requestUrl,
+            type: LOG_TYPE.PHOTO,
+            message: "Photo sent successfully ✅",
         });
     } catch (error) {
-        let errorObj = {
+        logError({
+            chatId,
+            type: ERROR_TYPE.FAILED,
             action: ACTION.SEND_PHOTO,
             errorCode: error?.response?.body?.error_code,
             errorDescription: error?.response?.body?.description,
-            requestedBy,
+        });
+    }
+};
+
+// Send media group (album)
+const sendMediaGroup = async (chatId, media) => {
+    try {
+        await Bot.sendMediaGroup(chatId, media);
+        logMessage({
             chatId,
-            requestUrl,
-        };
-        // Handle different error scenarios
-        if (error?.response?.body?.error_code === 429) {
-            logError({ ...errorObj, type: ERROR_TYPE.RATE_LIMIT });
-            await Bot.sendMessage(chatId, MESSSAGE.COOL_DOWN);
-        } else if (error?.response?.body?.error_code === 400) {
-            // Handle specific error for photo upload limits
-            await sendMessage({
-                ...context,
-                message: MESSSAGE.VIDEO_UPLOAD_LIMIT.replace(
-                    "mediaUrl",
-                    mediaUrl
-                ),
-            });
-            logMessage({
-                type: LOG_TYPE.PHOTO_URL,
-                requestedBy,
-                chatId,
-                requestUrl,
-            });
-        } else {
-            logError({ ...errorObj, type: ERROR_TYPE.FAILED });
-        }
+            type: LOG_TYPE.GROUP,
+            message: "Media group sent successfully ✅",
+        });
+    } catch (error) {
+        logError({
+            chatId,
+            type: ERROR_TYPE.FAILED,
+            action: ACTION.SEND_MEDIA_GROUP,
+            errorCode: error?.response?.body?.error_code,
+            errorDescription: error?.response?.body?.description,
+        });
     }
 };
 
-// Send requested data (media or messages) to a chat
-const sendRequestedData = async (data) => {
-    const {
-        chatId,
-        messageId,
-        requestedBy,
-        requestUrl,
-        caption,
-        mediaUrl,
-        mediaType,
-        mediaList,
-    } = data;
-
-    const messagesToDelete = [];
-
-    const userContext = {
-        chatId,
-        messageId,
-        requestedBy,
-        requestUrl,
-        message: caption,
-    };
-
-    // Send typing action if chatId is present
-    if (chatId) {
-        await sendChatAction(userContext);
-    }
-
-    // Send initiating upload message
-    const uploadingMessage = await sendMessage({
-        ...userContext,
-        message: MESSSAGE.INITIATING_UPLOAD,
-    });
-
-    // Add message to delete after processing
-    if (uploadingMessage) {
-        messagesToDelete.push(uploadingMessage?.message_id);
-    }
-
-    const uploadContent = async (userContext) => {
-        // Determine type of media to send based on mediaType
-        if (mediaType === MEDIA_TYPE.MEDIA_GROUP) {
-            // Prepare media group array to send
-            const mediaGroupUrls = [];
-            for (let i = 0; i < mediaList?.length; i++) {
-                let mediaItem = mediaList[i];
-                if (mediaItem.mediaType === MEDIA_TYPE.IMAGE) {
-                    mediaGroupUrls.push({
-                        type: "photo",
-                        media: mediaItem.mediaUrl,
-                    });
-                } else if (mediaItem.mediaType === MEDIA_TYPE.VIDEO) {
-                    mediaGroupUrls.push({
-                        type: "video",
-                        media: mediaItem.mediaUrl,
-                    });
-                }
-            }
-
-            await sendChatAction({ ...userContext, action: "typing" });
-            // Send media group to chat
-            await sendMediaGroup({
-                ...userContext,
-                mediaGroupUrls,
-                caption: caption,
-            });
-        } else if (mediaType === MEDIA_TYPE.VIDEO) {
-            await sendChatAction({ ...userContext, action: "upload_video" });
-            // Send single video to chat
-            await sendVideo({ ...userContext, mediaUrl, caption: caption });
-        } else if (mediaType === MEDIA_TYPE.IMAGE) {
-            await sendChatAction({ ...userContext, action: "upload_photo" });
-            // Send single photo to chat
-            await sendPhoto({ ...userContext, mediaUrl, caption: caption });
-        }
-
-        // If caption exists, send typing action and then send caption
-        // if (caption) {
-        //     await sendChatAction(userContext);
-        //     await sendMessage({ ...userContext, message: caption });
-        // }
-    };
-
-    await uploadContent(userContext);
-
-    // Delete messages after processing
-    await deleteMessages({ ...userContext, messagesToDelete });
-
-    // Dump media in local group
-    // await uploadContent({ ...userContext, chatId: "-1002207692130" });
-};
-
-// Export all functions for sending messages and media to a chat
 module.exports = {
     sendChatAction,
     deleteMessages,
     sendMessage,
-    sendMediaGroup,
     sendVideo,
     sendPhoto,
-    sendRequestedData,
+    sendMediaGroup,
 };
