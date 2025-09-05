@@ -1,165 +1,152 @@
 const { Bot } = require("./config");
-const {
-    ACTION,
-    ERROR_TYPE,
-    LOG_TYPE,
-} = require("./constants");
-const { logMessage, logError } = require("./utils");
+const { log } = require("./utils");
 
-// Send typing action
-const sendChatAction = async (context) => {
-    const { chatId, requestUrl, requestedBy } = context;
-    try {
-        await Bot.sendChatAction(chatId, "typing");
-    } catch (error) {
-        const errorObj = {
-            action: ACTION.SEND_CHAT_ACTION,
-            errorCode: error?.response?.body?.error_code,
-            errorDescription: error?.response?.body?.description,
-            requestedBy,
-            chatId,
-            requestUrl,
-        };
-        logError({ ...errorObj, type: error?.response?.body?.error_code === 429 ? ERROR_TYPE.RATE_LIMIT : ERROR_TYPE.FAILED });
-    }
-};
-
-// Delete messages
-const deleteMessages = async (context) => {
-    const { chatId, messagesToDelete, requestUrl, requestedBy } = context;
-    messagesToDelete.forEach(async (messageId) => {
-        try {
-            await Bot.deleteMessage(chatId, messageId);
-        } catch (error) {
-            const errorObj = {
-                action: ACTION.DELETE_MESSAGE,
-                errorCode: error?.response?.body?.error_code,
-                errorDescription: error?.response?.body?.description,
-                requestedBy,
-                chatId,
-                requestUrl,
-            };
-            logError({ ...errorObj, type: error?.response?.body?.error_code === 429 ? ERROR_TYPE.RATE_LIMIT : ERROR_TYPE.FAILED });
-        }
-    });
-};
-
-// Send message
-const sendMessage = async (context) => {
-    const { chatId, message, parseMode = "HTML", disablePreview = false, requestedBy, requestUrl } = context;
+// ✅ Text Message भेजने वाला
+const sendMessage = async ({ chatId, message, requestedBy, requestUrl }) => {
     try {
         await Bot.sendMessage(chatId, message, {
-            parse_mode: parseMode,
-            disable_web_page_preview: disablePreview,
-        });
-    } catch (error) {
-        logError({
-            chatId,
-            requestedBy,
-            requestUrl,
-            type: ERROR_TYPE.FAILED,
-            action: ACTION.SEND_MESSAGE,
-            errorCode: error?.response?.body?.error_code,
-            errorDescription: error?.response?.body?.description,
-        });
-    }
-};
-
-// Send video
-const sendVideo = async (context) => {
-    const { chatId, videoUrl, requestedBy, requestUrl, caption = "" } = context;
-    try {
-        await Bot.sendVideo(chatId, videoUrl, {
-            caption,
+            parse_mode: "Markdown",
             reply_markup: {
                 inline_keyboard: [
-                    [{ text: "My Boss 🥷", url: "https://t.me/mixy_ox" }]
+                    [
+                        { text: "🔥 My Boss 🥷", url: "https://t.me/mixy_ox" },
+                        { text: "🔗 Source", url: requestUrl }
+                    ]
                 ]
             }
         });
-        logMessage({
-            chatId,
-            type: LOG_TYPE.VIDEO,
-            message: "Video sent successfully ✅",
-        });
+        log(`Message sent to ${requestedBy?.userName || chatId}`);
     } catch (error) {
-        logError({
-            chatId,
-            requestedBy,
-            requestUrl,
-            type: ERROR_TYPE.FAILED,
-            action: ACTION.SEND_VIDEO,
-            errorCode: error?.response?.body?.error_code,
-            errorDescription: error?.response?.body?.description,
-        });
+        log("sendMessage Failed 😢: ", error.response?.body || error.message);
     }
 };
 
-// Send photo
-const sendPhoto = async (context) => {
-    const { chatId, photoUrl, caption = "", requestedBy, requestUrl, extra } = context;
+// ✅ Photo भेजने वाला
+const sendPhoto = async ({ chatId, photoUrl, caption, requestedBy, requestUrl }) => {
     try {
-        await Bot.sendPhoto(chatId, photoUrl, { caption, ...extra });
-        logMessage({
-            chatId,
-            type: LOG_TYPE.PHOTO,
-            message: "Photo sent successfully ✅",
+        await Bot.sendPhoto(chatId, photoUrl, {
+            caption,
+            parse_mode: "Markdown",
+            reply_markup: {
+                inline_keyboard: [
+                    [
+                        { text: "🔥 My Boss 🥷", url: "https://t.me/mixy_ox" },
+                        { text: "🔗 Source", url: requestUrl }
+                    ]
+                ]
+            }
         });
+        log(`Photo sent to ${requestedBy?.userName || chatId}`);
     } catch (error) {
-        logError({
-            chatId,
-            requestedBy,
-            requestUrl,
-            type: ERROR_TYPE.FAILED,
-            action: ACTION.SEND_PHOTO,
-            errorCode: error?.response?.body?.error_code,
-            errorDescription: error?.response?.body?.description,
-        });
+        log("sendPhoto Failed 😢: ", error.response?.body || error.message);
     }
 };
 
-// Send media group
-const sendMediaGroup = async (context) => {
-    const { chatId, media, requestedBy, requestUrl } = context;
+// ✅ Video भेजने वाला
+const sendVideo = async ({ chatId, videoUrl, caption, requestedBy, requestUrl }) => {
     try {
+        await Bot.sendVideo(chatId, videoUrl, {
+            caption,
+            parse_mode: "Markdown",
+            reply_markup: {
+                inline_keyboard: [
+                    [
+                        { text: "🔥 My Boss 🥷", url: "https://t.me/mixy_ox" },
+                        { text: "🔗 Source", url: requestUrl }
+                    ]
+                ]
+            }
+        });
+        log(`Video sent to ${requestedBy?.userName || chatId}`);
+    } catch (error) {
+        log("sendVideo Failed 😢: ", error.response?.body || error.message);
+    }
+};
+
+// ✅ Media Group (Carousel Posts) भेजने वाला
+const sendMediaGroup = async ({ chatId, media, requestedBy, requestUrl }) => {
+    try {
+        // media array में captions repeat नहीं करेंगे वरना error आ सकता है
+        if (media.length > 0) {
+            media[0].caption = media[0].caption || "";
+            media[0].parse_mode = "Markdown";
+        }
+
         await Bot.sendMediaGroup(chatId, media);
-        logMessage({
-            chatId,
-            type: LOG_TYPE.GROUP,
-            message: "Media group sent successfully ✅",
+        log(`MediaGroup sent to ${requestedBy?.userName || chatId}`);
+
+        // Extra buttons बाद में भेज देंगे
+        await Bot.sendMessage(chatId, "👇 Downloaded from Source", {
+            reply_markup: {
+                inline_keyboard: [
+                    [
+                        { text: "🔥 My Boss 🥷", url: "https://t.me/mixy_ox" },
+                        { text: "🔗 Source", url: requestUrl }
+                    ]
+                ]
+            }
         });
     } catch (error) {
-        logError({
-            chatId,
-            requestedBy,
-            requestUrl,
-            type: ERROR_TYPE.FAILED,
-            action: ACTION.SEND_MEDIA_GROUP,
-            errorCode: error?.response?.body?.error_code,
-            errorDescription: error?.response?.body?.description,
-        });
+        log("sendMediaGroup Failed 😢: ", error.response?.body || error.message);
     }
 };
 
-// 🔥 FIX: sendRequestedData function
+// ✅ FIXED sendRequestedData
 const sendRequestedData = async (context) => {
-    const { chatId, mediaType, videoUrl, photoUrl, caption = "" } = context;
+    const { chatId, mediaType, mediaUrl, displayUrl, caption = "" } = context;
 
+    // अगर Video है
     if (mediaType === "video") {
-        return sendVideo({ chatId, videoUrl, caption, ...context });
-    } else if (mediaType === "photo") {
-        return sendPhoto({ chatId, photoUrl, caption, ...context });
-    } else {
-        return sendMessage({ chatId, message: caption || "Your content is ready!", ...context });
+        return sendVideo({
+            chatId,
+            videoUrl: mediaUrl,
+            caption,
+            requestedBy: context.requestedBy,
+            requestUrl: context.requestUrl
+        });
     }
+
+    // अगर Photo है
+    if (mediaType === "image") {
+        return sendPhoto({
+            chatId,
+            photoUrl: displayUrl || mediaUrl,
+            caption,
+            requestedBy: context.requestedBy,
+            requestUrl: context.requestUrl
+        });
+    }
+
+    // अगर Multiple Media (carousel post) है
+    if (mediaType === "media_group" && context.mediaList) {
+        const media = context.mediaList.map((item) => {
+            if (item.mediaType === "video") {
+                return { type: "video", media: item.mediaUrl, caption: caption };
+            } else {
+                return { type: "photo", media: item.displayUrl, caption: caption };
+            }
+        });
+        return sendMediaGroup({
+            chatId,
+            media,
+            requestedBy: context.requestedBy,
+            requestUrl: context.requestUrl
+        });
+    }
+
+    // ❌ fallback (कुछ भी media नहीं मिला तो text भेजेगा)
+    return sendMessage({
+        chatId,
+        message: caption || "❌ मीडिया डाउनलोड नहीं हो पाया।",
+        requestedBy: context.requestedBy,
+        requestUrl: context.requestUrl
+    });
 };
 
 module.exports = {
-    sendChatAction,
-    deleteMessages,
     sendMessage,
-    sendVideo,
     sendPhoto,
+    sendVideo,
     sendMediaGroup,
-    sendRequestedData, // 👈 अब यह export हो गया
+    sendRequestedData
 };
