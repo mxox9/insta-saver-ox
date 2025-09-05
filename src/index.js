@@ -5,7 +5,6 @@ const { Bot, connectDB, Browser } = require("./config");
 const { initQueue } = require("./queue");
 const { log } = require("./utils");
 const ContentRequest = require("./models/ContentRequest");
-const { MESSSAGE } = require("./constants");
 const { sendMessage, sendPhoto } = require("./telegramActions");
 const { isValidInstaUrl } = require("./utils/helper");
 const { addOrUpdateUser } = require("./utils/addOrUpdateUser");
