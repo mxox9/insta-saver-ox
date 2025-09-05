@@ -67,10 +67,10 @@ const sendMessage = async (context) => {
 
 // Send video
 const sendVideo = async (context) => {
-    const { chatId, videoUrl, requestedBy, requestUrl } = context;
+    const { chatId, videoUrl, requestedBy, requestUrl, caption = "" } = context;
     try {
         await Bot.sendVideo(chatId, videoUrl, {
-            caption: "",
+            caption,
             reply_markup: {
                 inline_keyboard: [
                     [{ text: "My Boss 🥷", url: "https://t.me/mixy_ox" }]
@@ -141,6 +141,19 @@ const sendMediaGroup = async (context) => {
     }
 };
 
+// 🔥 FIX: sendRequestedData function
+const sendRequestedData = async (context) => {
+    const { chatId, mediaType, videoUrl, photoUrl, caption = "" } = context;
+
+    if (mediaType === "video") {
+        return sendVideo({ chatId, videoUrl, caption, ...context });
+    } else if (mediaType === "photo") {
+        return sendPhoto({ chatId, photoUrl, caption, ...context });
+    } else {
+        return sendMessage({ chatId, message: caption || "Your content is ready!", ...context });
+    }
+};
+
 module.exports = {
     sendChatAction,
     deleteMessages,
@@ -148,4 +161,5 @@ module.exports = {
     sendVideo,
     sendPhoto,
     sendMediaGroup,
+    sendRequestedData, // 👈 अब यह export हो गया
 };
