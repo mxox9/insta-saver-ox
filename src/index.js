@@ -39,7 +39,7 @@ Just send me any Instagram link & I'll get it for you!`;
         photoUrl: "https://i.ibb.co/XkLZZW9s/IMG-20250905-045429.jpg",
         caption: welcomeCaption,
         extra: buttons,
-        requestedBy: { userName, firstName } // ✅ Fix
+        requestedBy: { userName, firstName }
     });
 });
 
@@ -99,6 +99,7 @@ if (require.main === module) {
     module.exports = app;
 }
 
+// ✅ Routes
 app.get("/", (req, res) => {
     res.json({ message: "Welcome to Insta Saver Bot" });
 });
@@ -107,6 +108,7 @@ app.get("/test", (req, res) => {
     res.json({ message: "Bot is Online!!" });
 });
 
+// ✅ Graceful Shutdown
 process.on("SIGINT", async () => {
     await Browser.Close();
     process.exit(0);
